@@ -1,0 +1,23 @@
+{
+    "encoder_max_len": 420,
+    "decoder_max_len": 40,
+    "embedding_size": 20,
+    "hidden_size": 100,
+    "input_dropout_p": 0,
+    "dropout_p": 0,
+    "n_layers": 1,
+    "bidirectional": false,
+    "rnn_cell": "lstm",
+    "variable_lengths": true,
+    "embedding": null,
+    "update_embedding": true,
+    "get_context_vector": false,
+    "use_attention": true,
+    "attn_layers": 1,
+    "hard_attn": false,
+    "encoder_position_embedding": null,
+    "decoder_position_embedding": null,
+    "pos_add" : "add",
+    "use_memory" : null,
+    "memory_dim" : 5
+}
