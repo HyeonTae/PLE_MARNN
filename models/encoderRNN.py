@@ -16,7 +16,7 @@ class EncoderRNN(BaseRNN):
     def __init__(self, vocab_size, max_len, hidden_size,
                  embedding_size, input_dropout_p, dropout_p, position_embedding,
                  pretrained_pos_weight, n_layers, bidirectional, rnn_cell, variable_lengths,
-                 embedding, update_embedding, get_context_vector, pos_add, use_memory, memory_dim):
+                 embedding, update_embedding, get_context_vector, pos_add, use_memory=None, memory_dim):
         super(EncoderRNN, self).__init__(vocab_size, max_len, hidden_size,
                 input_dropout_p, dropout_p, n_layers, rnn_cell)
 
@@ -146,10 +146,11 @@ class EncoderRNN(BaseRNN):
             encoder_action = torch.tensor(()).to(device)
             for j in range(seq_len):
                 embedded = inpemb[:, j, :].clone().unsqueeze(1)
-                if self.pos_add == 'cat':
-                    embedded = torch.cat((embedded, posemb[:, j, :].clone().unsqueeze(1)), dim=2)
-                elif self.pos_add == 'add':
-                    embedded += posemb[:, j, :].clone().unsqueeze(1)
+                if self.position_embedding is not None:
+                    if self.pos_add == 'cat':
+                        embedded = torch.cat((embedded, posemb[:, j, :].clone().unsqueeze(1)), dim=2)
+                    elif self.pos_add == 'add':
+                        embedded += posemb[:, j, :].clone().unsqueeze(1)
 
                 if j == 0:
                     if self.s_rnn == "gru":

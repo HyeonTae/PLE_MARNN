@@ -120,10 +120,11 @@ class DecoderRNN(BaseRNN):
             decoder_action = torch.tensor(()).to(device)
             for j in range(output_size):
                 embedded = inpemb[:, j, :].clone().unsqueeze(1)
-                if self.pos_add == 'cat':
-                    embedded = torch.cat((embedded, posemb[:, j, :].clone().unsqueeze(1)), dim=2)
-                elif self.pos_add == 'add':
-                    embedded += posemb[:, j, :].clone().unsqueeze(1)
+                if self.position_embedding is not None:
+                    if self.pos_add == 'cat':
+                        embedded = torch.cat((embedded, posemb[:, j, :].clone().unsqueeze(1)), dim=2)
+                    elif self.pos_add == 'add':
+                        embedded += posemb[:, j, :].clone().unsqueeze(1)
 
                 if j == 0:
                     if self.s_rnn == "gru":

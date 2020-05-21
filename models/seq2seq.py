@@ -29,7 +29,7 @@ class Seq2seq(nn.Module):
                                   update_embedding=config["update_embedding"],
                                   get_context_vector=config["get_context_vector"],
                                   pos_add=config["pos_add"],
-                                  use_memory=config["use_memory"],
+                                  use_memory=None,
                                   memory_dim=config["memory_dim"])
         self.decoder = DecoderRNN(vocab_size=tgt_vocab_size,
                                   max_len=config["decoder_max_len"],
