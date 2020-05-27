@@ -89,8 +89,8 @@ def fix_imports(program):
 def compilation_errors(string):
     name1 = int(time.time() * 10**6)
     name2 = np.random.random_integers(0, 1000)
-    filename = 'temp/tempfile_%d_%d.c' % (name1, name2)
-    out_file = 'temp/temp.out'
+    filename = 'log/test/temp/tempfile_%d_%d.c' % (name1, name2)
+    out_file = 'log/test/temp/temp.out'
 
     with open(filename, 'w+') as f:
         f.write(string)
@@ -107,7 +107,7 @@ def compilation_errors(string):
     error_set = []
 
     for line in result.splitlines():
-        if 'error:' in line:
+        if 'error:' in line.decode("utf-8"):
             error_set.append(line)
 
     return error_set, result

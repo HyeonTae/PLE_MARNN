@@ -15,8 +15,6 @@ from models.earlyStopping import EarlyStopping
 
 import matplotlib.pyplot as plt
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 class Trainer(object):
     def __init__(self, loss, batch_size, learning_rate=0.001,
                  random_seed=None, checkpoint_every=100, print_every=100,
@@ -43,14 +41,12 @@ class Trainer(object):
         if not os.path.isdir("log/check_point/" + path):
             os.mkdir("log/check_point/" + path)
 
-        self.EOS_SLICE = torch.ones((batch_size, 1)).long().to(device) * 1
-        self.PAD_SLICE = torch.ones((batch_size, 1)).long().to(device) * 0
         self.batch_size = batch_size
 
         self.logger = logging.getLogger(__name__)
 
-    def _train_batch(self, input_variable, input_lengths,
-            target_variable, target_lengths, model, teacher_forcing_ratio):
+    def _train_batch(self, input_variable, input_lengths, target_variable, 
+                     target_lengths, model, teacher_forcing_ratio):
         loss = self.loss
         # Forward propagation
         decoder_outputs, decoder_hidden, other = model(input_variable, input_lengths, target_variable,
@@ -68,26 +64,22 @@ class Trainer(object):
         return loss.get_loss()
 
     def _train_epoches(self, data, model, n_epochs, start_epoch, start_step,
-                       teacher_forcing_ratio=0):
+                       dev_data=None, teacher_forcing_ratio=0):
         log = self.logger
 
         print_loss_total = 0  # Reset every print_every
         epoch_loss_total = 0  # Reset every epoch
 
-        num_train, num_validation, num_test = data.data_size
-
         #device = torch.cuda if torch.cuda.is_available() else torch
-        #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        #batch_iterator = torchtext.data.BucketIterator(
-        #    dataset=data, batch_size=self.batch_size,
-        #    sort=False, sort_within_batch=True,
-        #    sort_key=lambda x: len(x.src),
-        #    device=device, repeat=False)
-        #steps_per_epoch = len(batch_iterator)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        batch_iterator = torchtext.data.BucketIterator(
+            dataset=data, batch_size=self.batch_size,
+            sort=False, sort_within_batch=True,
+            sort_key=lambda x: len(x.src),
+            device=device, repeat=False)
 
-        steps_per_epoch = 500
-
-        #total_steps = steps_per_epoch * n_epochs
+        steps_per_epoch = len(batch_iterator)
+        total_steps = steps_per_epoch * n_epochs
 
         step = start_step
         step_elapsed = 0
@@ -101,55 +93,38 @@ class Trainer(object):
             epoch_list.append(epoch)
             log.debug("Epoch: %d, Step: %d" % (epoch, step))
 
-            #batch_generator = batch_iterator.__iter__()
+            batch_generator = batch_iterator.__iter__()
             # consuming seen batches from previous training
-            #for _ in range((epoch - 1) * steps_per_epoch, step):
-            #    next(batch_generator)
+            for _ in range((epoch - 1) * steps_per_epoch, step):
+                next(batch_generator)
 
             model.train(True)
 
-            for i in range(0, int(num_train / self.batch_size)):
+            for batch in batch_generator:
                 step += 1
                 step_elapsed += 1
 
-                start = i * 128
-                end = (i + 1) * 128
-
-                x, x_len, y, y_len = data.get_batch(start, end, which='train')
-                input_variables = torch.tensor(x.T.tolist())
-                target_variables = torch.tensor(y.T.tolist())
-                input_lengths = x_len.tolist()
-                target_lengths = y_len + 1
-                target_lengths = target_lengths.tolist()
-
-                if torch.cuda.is_available():
-                    input_variables = input_variables.cuda()
-                    target_variables = target_variables.cuda()
-
-                target_variables = torch.cat((self.EOS_SLICE, target_variables), dim=1)
-
-
-                #input_variables, input_lengths = getattr(batch, 'src')
-                #target_variables = getattr(batch, 'tgt')
+                input_variables, input_lengths = getattr(batch, 'src')
+                target_variables, target_lengths = getattr(batch, 'tgt')
 
                 # Drop last
                 #if input_variables.size(0) != self.batch_size:
                 #    continue
 
-                loss = self._train_batch(input_variables, input_lengths,
-                        target_variables, target_lengths, model, teacher_forcing_ratio)
+                loss = self._train_batch(input_variables, input_lengths.tolist(),
+                        target_variables, target_lengths.tolist(), model, teacher_forcing_ratio)
 
                 # Record average loss
                 print_loss_total += loss
                 epoch_loss_total += loss
 
-                #if step % self.print_every == 0 and step_elapsed > self.print_every:
-                #    print_loss_avg = print_loss_total / self.print_every
-                #    print_loss_total = 0
-                #    log_msg = 'Progress: %d%%, Train %s: %.4f' % (
-                #        step / total_steps * 100,
-                #        self.loss.name,
-                #        print_loss_avg)
+                if step % self.print_every == 0 and step_elapsed > self.print_every:
+                    print_loss_avg = print_loss_total / self.print_every
+                    print_loss_total = 0
+                    log_msg = 'Progress: %d%%, Train %s: %.4f' % (
+                        step / total_steps * 100,
+                        self.loss.name,
+                        print_loss_avg)
 
             if step_elapsed == 0: continue
 
@@ -157,21 +132,13 @@ class Trainer(object):
             epoch_loss_total = 0
             log_msg = "Finished epoch %d: Train %s: %.4f" % (epoch, self.loss.name, epoch_loss_avg)
             losses.append(epoch_loss_avg)
-
-            """
             if dev_data is not None:
-                dev_loss, character_accuracy, sentence_accuracy, f1_score = self.evaluator.evaluate(model, data)
+                dev_loss, character_accuracy, sentence_accuracy, f1_score = self.evaluator.evaluate(model, dev_data)
                 self.optimizer.update(dev_loss, epoch)
                 log_msg += ", Dev %s: %.4f, Accuracy(character): %.4f, Accuracy(sentence): %.4f, F1 Score: %.4f" % (self.loss.name, dev_loss, character_accuracy, sentence_accuracy, f1_score)
                 model.train(mode=True)
             else:
                 self.optimizer.update(epoch_loss_avg, epoch)
-            """
-
-            dev_loss, character_accuracy, sentence_accuracy, f1_score = self.evaluator.evaluate(model, data)
-            self.optimizer.update(dev_loss, epoch)
-            log_msg += ", Dev %s: %.4f, Accuracy(character): %.4f, Accuracy(sentence): %.4f, F1 Score: %.4f" % (self.loss.name, dev_loss, character_accuracy, sentence_accuracy, f1_score)
-            model.train(mode=True)
 
             character_accuracy_list.append(character_accuracy)
             sentence_accuracy_list.append(sentence_accuracy)
@@ -245,7 +212,8 @@ class Trainer(object):
         return epoch_loss_avg, character_accuracy_list, sentence_accuracy_list, f1_score_list
 
     def train(self, model, data, num_epochs=5,
-              resume=False, optimizer=None, teacher_forcing_ratio=0):
+              resume=False, dev_data=None,
+              optimizer=None, teacher_forcing_ratio=0):
         start_epoch = 1
         step = 0
         if optimizer is "Adam":
@@ -255,5 +223,6 @@ class Trainer(object):
         self.logger.info("Optimizer: %s, Scheduler: %s" % (self.optimizer.optimizer, self.optimizer.scheduler))
 
         loss, character_accuracy, sentence_accuracy, f1_score = self._train_epoches(data, model, num_epochs,
-                                    start_epoch, step, teacher_forcing_ratio=teacher_forcing_ratio)
+                                    start_epoch, step, dev_data=dev_data,
+                                    teacher_forcing_ratio=teacher_forcing_ratio)
         return model, loss, character_accuracy, sentence_accuracy, f1_score

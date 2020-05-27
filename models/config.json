@@ -19,5 +19,6 @@
     "decoder_position_embedding": null,
     "pos_add" : "add",
     "use_memory" : null,
-    "memory_dim" : 5
+    "memory_dim" : 5,
+    "seed" : null
 }

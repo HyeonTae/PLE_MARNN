@@ -29,11 +29,13 @@ class DecoderRNN(BaseRNN):
     def __init__(self, vocab_size, max_len, hidden_size, embedding_size, update_embedding,
             sos_id, eos_id, input_dropout_p, dropout_p, position_embedding,
             pretrained_pos_weight, n_layers, bidirectional, rnn_cell, use_attention,
-            attn_layers, hard_attn, pos_add, use_memory, memory_dim):
+            attn_layers, hard_attn, pos_add, use_memory, memory_dim, seed):
         super(DecoderRNN, self).__init__(vocab_size, max_len, hidden_size,
                 input_dropout_p, dropout_p,
                 n_layers, rnn_cell)
 
+        if seed is not None:
+            torch.manual_seed(seed)
         self.bidirectional_encoder = bidirectional
         self.output_size = vocab_size
         self.attn_layers = attn_layers

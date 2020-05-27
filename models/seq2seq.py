@@ -30,7 +30,8 @@ class Seq2seq(nn.Module):
                                   get_context_vector=config["get_context_vector"],
                                   pos_add=config["pos_add"],
                                   use_memory=None,
-                                  memory_dim=config["memory_dim"])
+                                  memory_dim=config["memory_dim"],
+                                  seed=config["seed"])
         self.decoder = DecoderRNN(vocab_size=tgt_vocab_size,
                                   max_len=config["decoder_max_len"],
                                   hidden_size=config["hidden_size"]*2 if config["bidirectional"] else config["hidden_size"],
@@ -50,7 +51,8 @@ class Seq2seq(nn.Module):
                                   hard_attn=config["hard_attn"],
                                   pos_add=config["pos_add"],
                                   use_memory=config["use_memory"],
-                                  memory_dim=config["memory_dim"])
+                                  memory_dim=config["memory_dim"],
+                                  seed=config["seed"])
         self.decode_function = F.log_softmax
 
     def flatten_parameters(self):

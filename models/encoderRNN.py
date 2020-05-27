@@ -15,11 +15,14 @@ class EncoderRNN(BaseRNN):
 
     def __init__(self, vocab_size, max_len, hidden_size,
                  embedding_size, input_dropout_p, dropout_p, position_embedding,
-                 pretrained_pos_weight, n_layers, bidirectional, rnn_cell, variable_lengths,
-                 embedding, update_embedding, get_context_vector, pos_add, use_memory=None, memory_dim):
+                 pretrained_pos_weight, n_layers, bidirectional, rnn_cell,
+                 variable_lengths, embedding, update_embedding, get_context_vector,
+                 pos_add, use_memory, memory_dim, seed):
         super(EncoderRNN, self).__init__(vocab_size, max_len, hidden_size,
                 input_dropout_p, dropout_p, n_layers, rnn_cell)
 
+        if seed is not None:
+            torch.manual_seed(seed)
         self.variable_lengths = variable_lengths
         self.get_context_vector = get_context_vector
         self.embedding_size = embedding_size

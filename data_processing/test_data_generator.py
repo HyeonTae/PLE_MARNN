@@ -172,31 +172,6 @@ def generate_seeded_test_data(db_path, bins, min_program_length, max_program_len
     return seeded_test_data, mutator_obj.get_mutation_distribution() if kind_mutations == 'typo' else {}
 
 
-def save_bins(destination, test_data, bins, which='raw'):
-    print(which)
-    full_list = []
-    for bin_ in bins:
-        for problem_id in bin_:
-            full_list.append(problem_id)
-
-    for i, bin_ in enumerate(bins):
-        test_problems = bin_
-
-        this_fold = {}
-        count = 0
-
-        for problem_id in sorted(test_problems):
-            if problem_id in test_data:
-                this_fold[problem_id] = test_data[problem_id]
-                count += len(test_data[problem_id])
-
-        assert os.path.isdir(os.path.join(destination, 'bin_%d' % i))
-
-        print("Fold %d: %d Test programs in %d problems" % (i, count, len(this_fold)))
-        np.save(os.path.join(destination, 'bin_%d' %
-                             i, 'test_%s_bin_%d.npy' % (which, i)), this_fold)
-
-
 if __name__ == "__main__":
     max_program_length = 450
     min_program_length = 75
@@ -228,11 +203,11 @@ if __name__ == "__main__":
                                                         programs_per_problem, seed)
 
     # Save raw test dataset
-    save_bins(iitk_typo_output_directory, raw_test_data, bins, 'raw')
-    save_bins(iitk_ids_output_directory, raw_test_data, bins, 'raw')
+    np.save(os.path.join(iitk_typo_output_directory, 'test_raw.npy'), raw_test_data)
+    np.save(os.path.join(iitk_ids_output_directory, 'test_raw.npy'), raw_test_data)
 
     # Save seeded test datasets
-    save_bins(iitk_typo_output_directory, seeded_typo_test_data, bins, 'seeded-typo')
-    save_bins(iitk_ids_output_directory, seeded_ids_test_data, bins, 'seeded-ids')
+    np.save(os.path.join(iitk_typo_output_directory, 'test_seeded-typo.npy'), seeded_typo_test_data)
+    np.save(os.path.join(iitk_ids_output_directory, 'test_seeded-ids.npy'), seeded_ids_test_data)
 
     print('test dataset generated!')
