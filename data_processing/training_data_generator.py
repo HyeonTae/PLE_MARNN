@@ -220,7 +220,7 @@ if __name__ == '__main__':
     np.save(os.path.join(output_directory, 'tokenized-examples.npy'), token_strings)
     np.save(os.path.join(output_directory, 'error-seeding-distribution.npy'), mutations_distribution)
 
-
+    '''
     train = open(output_directory + "/data_train.txt", 'w')
     val = open(output_directory + "/data_val.txt", 'w')
 
@@ -237,5 +237,6 @@ if __name__ == '__main__':
             tmp.reverse()
             val.write("%s\t%s\n" % (" ".join(tmp), i[1]))
     val.close()
+    '''
 
     print('\n\n--------------- all outputs written to {} ---------------\n\n'.format(output_directory))
