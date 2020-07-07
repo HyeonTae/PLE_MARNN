@@ -1,6 +1,5 @@
 {
-    "encoder_max_len": 420,
-    "decoder_max_len": 40,
+    "max_len": 105,
     "embedding_size": 20,
     "hidden_size": 100,
     "input_dropout_p": 0,
@@ -15,10 +14,8 @@
     "use_attention": true,
     "attn_layers": 1,
     "hard_attn": false,
-    "encoder_position_embedding": null,
-    "decoder_position_embedding": null,
+    "position_embedding": null,
     "pos_add" : "add",
     "use_memory" : null,
-    "memory_dim" : 5,
-    "seed" : null
+    "memory_dim" : 5
 }

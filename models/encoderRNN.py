@@ -15,14 +15,11 @@ class EncoderRNN(BaseRNN):
 
     def __init__(self, vocab_size, max_len, hidden_size,
                  embedding_size, input_dropout_p, dropout_p, position_embedding,
-                 pretrained_pos_weight, n_layers, bidirectional, rnn_cell,
-                 variable_lengths, embedding, update_embedding, get_context_vector,
-                 pos_add, use_memory, memory_dim, seed):
+                 pos_embedding, n_layers, bidirectional, rnn_cell, variable_lengths,
+                 embedding, update_embedding, get_context_vector, pos_add, use_memory, memory_dim):
         super(EncoderRNN, self).__init__(vocab_size, max_len, hidden_size,
                 input_dropout_p, dropout_p, n_layers, rnn_cell)
 
-        if seed is not None:
-            torch.manual_seed(seed)
         self.variable_lengths = variable_lengths
         self.get_context_vector = get_context_vector
         self.embedding_size = embedding_size
@@ -39,17 +36,7 @@ class EncoderRNN(BaseRNN):
         self.rnn = self.rnn_cell(rnn_input_size, hidden_size, n_layers,
                                  batch_first=True, bidirectional=bidirectional, dropout=dropout_p)
         self.position_embedding = position_embedding
-
-        if position_embedding == "length":
-            if pretrained_pos_weight is None:
-                self.pos_embedding = nn.Embedding(max_len, embedding_size)
-                self.pos_embedding.weight.requires_grad = update_embedding
-            else:
-                self.pos_embedding = nn.Embedding.from_pretrained(
-                        torch.from_numpy(pretrained_pos_weight))
-                self.pos_embedding.weight.requires_grad = False
-        else:
-            self.pos_embedding = None
+        self.pos_embedding = pos_embedding
 
         self.n_layers = n_layers
         self.hidden_size = hidden_size

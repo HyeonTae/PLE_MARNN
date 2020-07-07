@@ -2,6 +2,7 @@ import os
 import sys
 import random
 import math
+import copy
 
 import numpy as np
 
@@ -26,16 +27,14 @@ class DecoderRNN(BaseRNN):
     KEY_ENCODER_ACTION = 'encoder_action'
     KEY_DECODER_ACTION = 'decoder_action'
 
-    def __init__(self, vocab_size, max_len, hidden_size, embedding_size, update_embedding,
+    def __init__(self, vocab_size, max_len, hidden_size, embedding_size,
             sos_id, eos_id, input_dropout_p, dropout_p, position_embedding,
-            pretrained_pos_weight, n_layers, bidirectional, rnn_cell, use_attention,
-            attn_layers, hard_attn, pos_add, use_memory, memory_dim, seed):
+            pos_embedding, n_layers, bidirectional, rnn_cell, use_attention,
+            attn_layers, hard_attn, pos_add, use_memory, memory_dim):
         super(DecoderRNN, self).__init__(vocab_size, max_len, hidden_size,
                 input_dropout_p, dropout_p,
                 n_layers, rnn_cell)
 
-        if seed is not None:
-            torch.manual_seed(seed)
         self.bidirectional_encoder = bidirectional
         self.output_size = vocab_size
         self.attn_layers = attn_layers
@@ -48,6 +47,7 @@ class DecoderRNN(BaseRNN):
         self.init_input = None
         self.embedding_size = embedding_size
         self.embedding = nn.Embedding(self.output_size, embedding_size)
+        self.pos_embedding = pos_embedding
         self.position_embedding = position_embedding
         self.pos_add = pos_add
         if pos_add == 'cat':
@@ -55,18 +55,6 @@ class DecoderRNN(BaseRNN):
         else:
             rnn_input_size = embedding_size
         self.rnn = self.rnn_cell(rnn_input_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
-
-        if position_embedding == "length":
-            if pretrained_pos_weight is None:
-                self.pos_embedding = nn.Embedding(max_len, embedding_size)
-                self.pos_embedding.weight.requires_grad = update_embedding
-            else:
-                self.pos_embedding = nn.Embedding.from_pretrained(
-                        torch.from_numpy(pretrained_pos_weight))
-                self.pos_embedding.weight.requires_grad = False
-        else:
-            self.pos_embedding = None
-
         if use_attention:
             if hard_attn:
                 self.attention = Attention(self.hidden_size)
@@ -203,46 +191,55 @@ class DecoderRNN(BaseRNN):
                 self.out(output.contiguous().view(-1, hidden_sizes)), dim=1).view(batch_size, output_size, -1)
         return predicted_softmax, hidden, attn, decoder_action, memory
 
-    def sin_encoding(self, batch_size, max_len, inputs_lengths, d_model):
+    def sin_encoding(self, tgt_vocab, inputs,
+            batch_size, max_len, inputs_lengths, d_model):
+        zero_tok = tgt_vocab.stoi['0']
         pe = np.zeros((batch_size, max_len, d_model))
         for batch in range(batch_size):
-            for pos in range(max_len):
-                if inputs_lengths[batch]-pos <= 0:
+            for m in range(max_len):
+                if inputs_lengths[batch] <= 0:
                     for i in range(0, d_model, 2):
-                        pe[batch, pos, i] = 0.0
+                        pe[batch, m, i] = 0.0
                         if i+1 == d_model:
                             break
-                        pe[batch, pos, i+1] = 0.0
+                        pe[batch, m, i+1] = 0.0
                 else:
+                    if inputs[batch][m] == zero_tok:
+                        inputs_lengths[batch] -= 1
                     for i in range(0, d_model, 2):
-                        pe[batch, pos, i] = math.sin((
-                            inputs_lengths[batch]-pos)/(10000**(i/d_model)))
+                        pe[batch, m, i] = math.sin((
+                            inputs_lengths[batch])/(10000**(i/d_model)))
                         if i+1 == d_model:
                             break
-                        pe[batch, pos, i+1] = math.cos((
-                            inputs_lengths[batch]-pos)/(10000**(i/d_model)))
+                        pe[batch, m, i+1] = math.cos((
+                            inputs_lengths[batch])/(10000**(i/d_model)))
         pos = torch.from_numpy(pe)
         if torch.cuda.is_available():
             pos = pos.type(torch.cuda.FloatTensor)
-        return pos
+        return pos, inputs_lengths
 
-    def length_encoding(self, batch_size, max_len, inputs_lengths):
+    def length_encoding(self, tgt_vocab, inputs,
+            batch_size, max_len, inputs_lengths):
+
+        zero_tok = tgt_vocab.stoi['0']
         pe = []
         for batch in range(batch_size):
             p = []
-            for pos in range(max_len):
-                if inputs_lengths[batch] - pos <= 0:
+            for i in range(max_len):
+                if inputs_lengths[batch] <= 0:
                     p.append(0)
                 else:
-                    p.append(inputs_lengths[batch] - pos)
+                    if inputs[batch][i] == zero_tok:
+                        inputs_lengths[batch] -= 1
+                    p.append(inputs_lengths[batch])
             pe.append(p)
         pos = torch.tensor(pe)
         if torch.cuda.is_available():
             pos = pos.cuda()
         posemb = self.pos_embedding(pos)
-        return posemb
+        return posemb, inputs_lengths
 
-    def forward(self, inputs=None, input_lengths=None, encoder_hidden=None,
+    def forward(self, tgt_vocab, inputs=None, input_lengths=None, encoder_hidden=None,
             encoder_outputs=None, encoder_context=None, encoder_action=None,
             function=F.log_softmax, teacher_forcing_ratio=0):
         ret_dict = dict()
@@ -265,7 +262,6 @@ class DecoderRNN(BaseRNN):
         # encoder_hidden = tuple of the last hidden state and the last cell state.
         # Last cell state = number of layers * batch_size * hidden_size
         # Last hidden state = the same as above
-
         inputs, batch_size, max_length = self._validate_args(inputs, encoder_hidden,
                                                              encoder_outputs, function, teacher_forcing_ratio)
         decoder_hidden = self._init_state(encoder_hidden)
@@ -289,15 +285,14 @@ class DecoderRNN(BaseRNN):
                 update_idx = ((lengths > step) & eos_batches) != 0
                 lengths[update_idx] = len(sequence_symbols)
             return symbols
-
-        pos = None
-        if self.position_embedding == "sin":
-            pos = self.sin_encoding(
-                batch_size, max_length, input_lengths, self.embedding_size)
-        if self.position_embedding == "length":
-            pos = self.length_encoding(batch_size, max_length, input_lengths)
-
         if use_teacher_forcing:
+            pos = None
+            if self.position_embedding == "sin":
+                pos, _ = self.sin_encoding(tgt_vocab, inputs.cpu().tolist(),
+                    batch_size, max_length, input_lengths, self.embedding_size)
+            elif self.position_embedding == "length":
+                pos, _ = self.length_encoding(tgt_vocab, inputs.cpu().tolist(),
+                    batch_size, max_length, input_lengths)
             decoder_input = inputs[:, :-1]
             decoder_output, decoder_hidden, attn, decoder_action, stack = self.forward_step(
                     decoder_input, pos, decoder_hidden, encoder_outputs, di=0, function=function)
@@ -312,19 +307,24 @@ class DecoderRNN(BaseRNN):
         else:
             decoder_input = inputs[:, 0].unsqueeze(1)
             decoder_action = torch.tensor(()).to(device)
+            input_len = copy.deepcopy(input_lengths)
             for di in range(max_length):
-                if self.position_embedding:
-                    decoder_pos = pos[:, di].unsqueeze(1)
-                else:
-                    decoder_pos = None
+                decoder_pos = None
+                if self.position_embedding == "sin":
+                    pos, input_len = self.sin_encoding(tgt_vocab, decoder_input.cpu().tolist(),
+                        batch_size, 1, input_len, self.embedding_size)
+                    decoder_pos = pos[:, 0].unsqueeze(1)
+                elif self.position_embedding == "length":
+                    pos, input_len = self.length_encoding(tgt_vocab, decoder_input.cpu().tolist(),
+                        batch_size, 1, input_len)
+                    decoder_pos = pos[:, 0].unsqueeze(1)
+
                 decoder_output, decoder_hidden, step_attn, action, stack = self.forward_step(
                         decoder_input, decoder_pos, decoder_hidden, encoder_outputs, di, function=function)
                 step_output = decoder_output.squeeze(1)
                 symbols = decode(di, step_output, step_attn)
                 decoder_input = symbols
-                if action is None:
-                    decoder_action = None
-                else:
+                if action is not None:
                     decoder_action = torch.cat((decoder_action, action), dim=1)
 
         if decoder_action is not None:

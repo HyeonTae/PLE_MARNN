@@ -46,14 +46,14 @@ class Evaluator(object):
         with torch.no_grad():
             for batch in batch_iterator:
                 input_variables, input_lengths = getattr(batch, 'src')
-                target_variables, target_lengths = getattr(batch, 'tgt')
+                target_variables = getattr(batch, 'tgt')
 
                 # Drop last
                 #if input_variables.size(0) != self.batch_size:
                 #    continue
 
                 decoder_outputs, decoder_hidden, other = model(
-                        input_variables, input_lengths.tolist(), target_variables, target_lengths)
+                        input_variables, tgt_vocab, input_lengths.tolist(), target_variables)
                 correct_list = []
                 # Evaluation
                 seqlist = other['sequence']
