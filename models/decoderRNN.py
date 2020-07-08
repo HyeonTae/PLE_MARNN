@@ -287,8 +287,8 @@ class DecoderRNN(BaseRNN):
         match_tok = list()
         match_tok.append(tgt_vocab.stoi['0'])
         match_tok.append(tgt_vocab.stoi['-1'])
-        if len(tgt_vocab) > 109:
-            for i in range(110, len(tgt_vocab)+1):
+        if len(tgt_vocab) > 50:
+            for i in range(110, 219):
                 match_tok.append(tgt_vocab.stoi[str(i)])
 
         if use_teacher_forcing:
