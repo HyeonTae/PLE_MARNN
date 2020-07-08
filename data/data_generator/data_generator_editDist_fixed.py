@@ -13,8 +13,11 @@ op = "insert"
 if args.data_name == "typo":
     op = "replace"
 
-with open("ids_target_vocab.json", "r") as json_file:
+with open(args.data_name + "_target_vocab.json", "r") as json_file:
     target_vocab = json.load(json_file)
+
+with open("target_vocab_reverse.json", "r") as json_file:
+    inverse_vocab = json.load(json_file)
 
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(os.path.abspath(os.path.dirname('__file__'))))))
 os.chdir(os.path.dirname(os.path.abspath(os.path.dirname(os.path.abspath(os.path.dirname('__file__'))))))
@@ -23,21 +26,6 @@ data_path = "data/network_inputs/iitk-"+args.data_name+"-1189/"
 data = np.load(data_path+'tokenized-examples.npy').item()
 train = open(data_path+"data_train_edit.txt", 'w')
 val = open(data_path+"data_val_edit.txt", 'w')
-
-'''
-def getEditDistance(a, b):
-    la,lb = len(a),len(b)
-
-    d=[[0 for _ in range(int(lb+1))] for _ in range(int(la+1))]
-    for i in range(1,la+1): d[i][0]=i
-    for i in range(1,lb+1): d[0][i]=i
-
-    for i in range(1,la+1):
-      for j in range(1,lb+1):
-        d[i][j] = d[i-1][j-1] if a[i-1] == b[j-1] else min(d[i-1][j-1],d[i][j-1],d[i-1][j-1])+1
-
-    return d
-'''
 
 def getEditDistance(a, b):
     dist = np.zeros((len(a) + 1, len(b) + 1),dtype=np.int64)
@@ -77,12 +65,14 @@ def getTrace(a, b, dist):
 def apply_edits(source, edits):
     fixed = []
     inserted = 0
+    insert_tok = [str(i) for i in range(1,110)]
     for i, edit in enumerate(edits):
         if edit == '0':
             fixed.append(source[i - inserted])
         elif edit != '-1':
             fixed.append(inverse_vocab[edit])
-            inserted += 1
+            if edits[inserted] not in insert_tok:
+                inserted += 1
     
     return fixed
 
