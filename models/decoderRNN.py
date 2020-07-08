@@ -191,9 +191,8 @@ class DecoderRNN(BaseRNN):
                 self.out(output.contiguous().view(-1, hidden_sizes)), dim=1).view(batch_size, output_size, -1)
         return predicted_softmax, hidden, attn, decoder_action, memory
 
-    def sin_encoding(self, tgt_vocab, inputs,
+    def sin_encoding(self, match_tok, inputs,
             batch_size, max_len, inputs_lengths, d_model):
-        zero_tok = tgt_vocab.stoi['0']
         pe = np.zeros((batch_size, max_len, d_model))
         for batch in range(batch_size):
             for m in range(max_len):
@@ -204,7 +203,7 @@ class DecoderRNN(BaseRNN):
                             break
                         pe[batch, m, i+1] = 0.0
                 else:
-                    if inputs[batch][m] == zero_tok:
+                    if inputs[batch][m] in match_tok:
                         inputs_lengths[batch] -= 1
                     for i in range(0, d_model, 2):
                         pe[batch, m, i] = math.sin((
@@ -218,10 +217,8 @@ class DecoderRNN(BaseRNN):
             pos = pos.type(torch.cuda.FloatTensor)
         return pos, inputs_lengths
 
-    def length_encoding(self, tgt_vocab, inputs,
+    def length_encoding(self, match_tok, inputs,
             batch_size, max_len, inputs_lengths):
-
-        zero_tok = tgt_vocab.stoi['0']
         pe = []
         for batch in range(batch_size):
             p = []
@@ -229,8 +226,9 @@ class DecoderRNN(BaseRNN):
                 if inputs_lengths[batch] <= 0:
                     p.append(0)
                 else:
-                    if inputs[batch][i] == zero_tok:
+                    if inputs[batch][i] in match_tok:
                         inputs_lengths[batch] -= 1
+
                     p.append(inputs_lengths[batch])
             pe.append(p)
         pos = torch.tensor(pe)
@@ -285,13 +283,21 @@ class DecoderRNN(BaseRNN):
                 update_idx = ((lengths > step) & eos_batches) != 0
                 lengths[update_idx] = len(sequence_symbols)
             return symbols
+
+        match_tok = list()
+        match_tok.append(tgt_vocab.stoi['0'])
+        match_tok.append(tgt_vocab.stoi['-1'])
+        if len(tgt_vocab) > 109:
+            for i in range(110, len(tgt_vocab)+1):
+                match_tok.append(tgt_vocab.stoi[str(i)])
+
         if use_teacher_forcing:
             pos = None
             if self.position_embedding == "sin":
-                pos, _ = self.sin_encoding(tgt_vocab, inputs.cpu().tolist(),
+                pos, _ = self.sin_encoding(match_tok, inputs.cpu().tolist(),
                     batch_size, max_length, input_lengths, self.embedding_size)
             elif self.position_embedding == "length":
-                pos, _ = self.length_encoding(tgt_vocab, inputs.cpu().tolist(),
+                pos, _ = self.length_encoding(match_tok, inputs.cpu().tolist(),
                     batch_size, max_length, input_lengths)
             decoder_input = inputs[:, :-1]
             decoder_output, decoder_hidden, attn, decoder_action, stack = self.forward_step(
@@ -311,11 +317,11 @@ class DecoderRNN(BaseRNN):
             for di in range(max_length):
                 decoder_pos = None
                 if self.position_embedding == "sin":
-                    pos, input_len = self.sin_encoding(tgt_vocab, decoder_input.cpu().tolist(),
+                    pos, input_len = self.sin_encoding(match_tok, decoder_input.cpu().tolist(),
                         batch_size, 1, input_len, self.embedding_size)
                     decoder_pos = pos[:, 0].unsqueeze(1)
                 elif self.position_embedding == "length":
-                    pos, input_len = self.length_encoding(tgt_vocab, decoder_input.cpu().tolist(),
+                    pos, input_len = self.length_encoding(match_tok, decoder_input.cpu().tolist(),
                         batch_size, 1, input_len)
                     decoder_pos = pos[:, 0].unsqueeze(1)
 
