@@ -34,6 +34,64 @@ class InvalidFixLocationException(Exception):
 class SubstitutionFailedException(Exception):
     pass
 
+def remove_line_numbers(source):
+    lines = source.count('~')
+    for l in range(lines):
+        if l >= 10:
+            source = source.replace(list(str(l))[0] + " " + list(str(l))[1] + " ~ ", "", 1)
+        else:
+            source = source.replace(str(l) + " ~ ", "", 1)
+    source = source.replace("  ", " ")
+    return source.split()
+
+def getEditDistance(a, b):
+    dist = np.zeros((len(a) + 1, len(b) + 1),dtype=np.int64)
+    dist[:, 0] = list(range(len(a) + 1))
+    dist[0, :] = list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        for j in range(1, len(b) + 1):
+            insertion = dist[i, j - 1] + 1
+            deletion = dist[i - 1, j] + 1
+            match = dist[i - 1, j - 1]
+            if a[i - 1] != b[j - 1]:
+                match += 1  # -- mismatch
+            dist[i, j] = min(insertion, deletion, match)
+    return dist
+
+def getTrace(a, b, dist):
+    log = list()
+    i, j = len(a),len(b)
+    while i != 0 or j != 0:
+        s = min(dist[i-1][j], dist[i-1][j-1], dist[i][j-1])
+        if s == dist[i][j]:
+            i -= 1
+            j -= 1
+        else:
+            if s == dist[i-1][j-1]:
+                log.append(["r", i-1, b[j-1]])
+                i -= 1
+                j -= 1
+            elif s == dist[i-1][j]:
+                log.append(["d", i-1])
+                i -= 1
+            elif s == dist[i][j-1]:
+                log.append(["i", i, b[j-1]])
+                j -= 1
+    return log
+
+def apply_edits(source, edits, inverse_vocab):
+    fixed = []
+    inserted = 0
+    insert_tok = [str(i) for i in range(1,110)]
+    for i, edit in enumerate(edits):
+        if edit == '0':
+            fixed.append(source[i - inserted])
+        elif edit != '-1':
+            fixed.append(inverse_vocab[edit])                        
+            if edits[i] in insert_tok:
+                inserted += 1
+    
+    return fixed
 
 def split_list(a_list, delimiter, keep_delimiter=True):
     output = []
@@ -86,11 +144,16 @@ def fix_imports(program):
     return program
 
 
-def compilation_errors(string):
+def compilation_errors(string, temp_path):
     name1 = int(time.time() * 10**6)
     name2 = np.random.random_integers(0, 1000)
-    filename = 'log/test/temp/tempfile_%d_%d.c' % (name1, name2)
-    out_file = 'log/test/temp/temp.out'
+
+    temp_path = temp_path + "/temp"
+    if not os.path.isdir(temp_path):
+        os.mkdir(temp_path)
+
+    filename = temp_path + '/tempfile_%d_%d.c' % (name1, name2)
+    out_file = temp_path + '/temp.out'
 
     with open(filename, 'w+') as f:
         f.write(string)
@@ -197,6 +260,8 @@ def tokens_to_source(tokens, name_dict, clang_format=False, name_seq=None):
             if type_ == 'directive' or type_ == 'include' or type_ == 'op' or type_ == 'type' or type_ == 'keyword' or type_ == 'APIcall':
                 if type_ == 'op' and prev_type_was_op:
                     result = result[:-1] + content + ' '
+                elif type_ == 'include':
+                    result += content + '\n'
                 else:
                     result += content + ' '
             elif type_ == 'id':
@@ -210,7 +275,8 @@ def tokens_to_source(tokens, name_dict, clang_format=False, name_seq=None):
         except ValueError:
             if token == '~':
                 result += '\n'
-
+                
+                
     if not clang_format:
         return result
 
