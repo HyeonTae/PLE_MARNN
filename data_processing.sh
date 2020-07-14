@@ -1,4 +1,8 @@
 mkdir data/network_inputs
+mkdir log/check_point
+mkdir log/plot
+mkdir log/pth
+mkdir log/test
 
 echo 'Downloading DeepFix dataset...'
 wget https://www.cse.iitk.ac.in/users/karkare/prutor/prutor-deepfix-09-12-2017.zip -P data/

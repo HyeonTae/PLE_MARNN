@@ -13,7 +13,6 @@ class TargetField(torchtext.data.Field):
 
     def __init__(self, **kwargs):
         kwargs['batch_first'] = True
-        kwargs['include_lengths'] = True
         if kwargs.get('preprocessing') is None:
             kwargs['preprocessing'] = lambda seq: [self.SYM_SOS] + seq + [self.SYM_EOS]
         else:
