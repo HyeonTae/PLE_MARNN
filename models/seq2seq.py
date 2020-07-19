@@ -9,7 +9,7 @@ from models.decoderRNN import DecoderRNN
 
 class Seq2seq(nn.Module):
 
-    def __init__(self, config, src_vocab_size, tgt_vocab_size, sos_id, eos_id,
+    def __init__(self, config, src_vocab_size, tgt_vocab, sos_id, eos_id,
                  pretrained_pos_weight=None):
         super(Seq2seq, self).__init__()
 
@@ -43,7 +43,8 @@ class Seq2seq(nn.Module):
                                   #use_memory=config["use_memory"],
                                   use_memory=None,
                                   memory_dim=config["memory_dim"])
-        self.decoder = DecoderRNN(vocab_size=tgt_vocab_size,
+        self.decoder = DecoderRNN(vocab=tgt_vocab,
+                                  vocab_size=len(tgt_vocab),
                                   max_len=config["max_len"],
                                   hidden_size=config["hidden_size"]*2 if config["bidirectional"] else config["hidden_size"],
                                   embedding_size=config["embedding_size"],
@@ -68,12 +69,11 @@ class Seq2seq(nn.Module):
         self.encoder.rnn.flatten_parameters()
         self.decoder.rnn.flatten_parameters()
 
-    def forward(self, input_variable, tgt_vocab, input_lengths=None,
+    def forward(self, input_variable, input_lengths=None,
             target_variable=None, teacher_forcing_ratio=0):
         encoder_outputs, encoder_hidden, encoder_context, encoder_action, encoder_memory = self.encoder(
                                                                     input_variable, input_lengths)
-        result = self.decoder(tgt_vocab=tgt_vocab,
-                              inputs=target_variable,
+        result = self.decoder(inputs=target_variable,
                               input_lengths=input_lengths,
                               encoder_hidden=encoder_hidden,
                               encoder_outputs=encoder_outputs,
