@@ -27,7 +27,7 @@ class DecoderRNN(BaseRNN):
     KEY_ENCODER_ACTION = 'encoder_action'
     KEY_DECODER_ACTION = 'decoder_action'
 
-    def __init__(self, vocab_size, max_len, hidden_size, embedding_size,
+    def __init__(self, vocab, vocab_size, max_len, hidden_size, embedding_size,
             sos_id, eos_id, input_dropout_p, dropout_p, position_embedding,
             pos_embedding, n_layers, bidirectional, rnn_cell, use_attention,
             attn_layers, hard_attn, pos_add, use_memory, memory_dim):
@@ -49,19 +49,22 @@ class DecoderRNN(BaseRNN):
         self.embedding = nn.Embedding(self.output_size, embedding_size)
         self.pos_embedding = pos_embedding
         self.position_embedding = position_embedding
+        if position_embedding is not None:
+            self.insert_tok = self.insert_token(vocab)
         self.pos_add = pos_add
         if pos_add == 'cat':
             rnn_input_size = embedding_size*2
         else:
             rnn_input_size = embedding_size
         self.rnn = self.rnn_cell(rnn_input_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.hard_attn = hard_attn
         if use_attention:
             if hard_attn:
                 self.attention = Attention(self.hidden_size)
-                self.hard_attention = HardAttention(self.hidden_size)
+                self.hard_attention = HardAttention(self.hidden_size, self.insert_tok)
                 self.out = nn.Linear(self.hidden_size*2, self.output_size)
             else:
-                self.attention1 = Attention(int(self.hidden_size/attn_layers))
+                self.attention = Attention(int(self.hidden_size/attn_layers))
                 self.out = nn.Linear(self.hidden_size, self.output_size)
         else:
             self.out = nn.Linear(self.hidden_size, self.output_size)
@@ -160,28 +163,29 @@ class DecoderRNN(BaseRNN):
         if self.use_attention:
             if self.hard_attn:
                 s_output, s_attn = self.attention(output, encoder_outputs)
-                h_output, h_attn = self.hard_attention(output, encoder_outputs, di)
+                h_output, h_attn = self.hard_attention(input_var,
+                                                       output, encoder_outputs, di)
                 output = torch.cat((s_output, h_output), dim=2)
                 attn = torch.cat((s_attn, h_attn), dim=1)
                 hidden_sizes = self.hidden_size*2
             else:
                 hidden_sizes = self.hidden_size
                 if self.attn_layers is 1:
-                    output, attn = self.attention1(output, encoder_outputs)
+                    output, attn = self.attention(output, encoder_outputs)
                 if self.attn_layers is 2:
                     o1, o2 = torch.chunk(output, 2, dim=2)
                     e1, e2 = torch.chunk(encoder_outputs, 2, dim=2)
-                    output, attn = self.attention1(o1, e1)
-                    output2, attn2 = self.attention1(o2, e2)
+                    output, attn = self.attention(o1, e1)
+                    output2, attn2 = self.attention(o2, e2)
                     output = torch.cat((output1, output2), dim=2)
                     attn = torch.cat((attn1, attn2), dim=1)
                 elif self.attn_layers is 4:
                     o1, o2, o3, o4 = torch.chunk(output, 4, dim=2)
                     e1, e2, e3, e4 = torch.chunk(encoder_outputs, 4, dim=2)
-                    output1, attn1 = self.attention1(o1, e1)
-                    output2, attn2 = self.attention1(o2, e2)
-                    output3, attn3 = self.attention1(o3, e3)
-                    output4, attn4 = self.attention1(o4, e4)
+                    output1, attn1 = self.attention(o1, e1)
+                    output2, attn2 = self.attention(o2, e2)
+                    output3, attn3 = self.attention(o3, e3)
+                    output4, attn4 = self.attention(o4, e4)
                     output = torch.cat((output1, output2, output3, output4), dim=2)
                     attn = torch.cat((attn1, attn2, attn3, attn4), dim=1)
         else:
@@ -191,7 +195,16 @@ class DecoderRNN(BaseRNN):
                 self.out(output.contiguous().view(-1, hidden_sizes)), dim=1).view(batch_size, output_size, -1)
         return predicted_softmax, hidden, attn, decoder_action, memory
 
-    def sin_encoding(self, match_tok, inputs,
+    def insert_token(self, vocab):
+        insert_tok = list()
+        insert_num = [str(i) for i in range(1,110)]
+        for k in vocab.stoi.keys():
+            if k in insert_num:
+                insert_tok.append(vocab.stoi[k])
+
+        return insert_tok
+
+    def sin_encoding(self, inputs,
             batch_size, max_len, inputs_lengths, d_model):
         pe = np.zeros((batch_size, max_len, d_model))
         for batch in range(batch_size):
@@ -203,7 +216,7 @@ class DecoderRNN(BaseRNN):
                             break
                         pe[batch, m, i+1] = 0.0
                 else:
-                    if inputs[batch][m] in match_tok:
+                    if inputs[batch][m] not in self.insert_tok:
                         inputs_lengths[batch] -= 1
                     for i in range(0, d_model, 2):
                         pe[batch, m, i] = math.sin((
@@ -217,7 +230,7 @@ class DecoderRNN(BaseRNN):
             pos = pos.type(torch.cuda.FloatTensor)
         return pos, inputs_lengths
 
-    def length_encoding(self, match_tok, inputs,
+    def length_encoding(self, inputs,
             batch_size, max_len, inputs_lengths):
         pe = []
         for batch in range(batch_size):
@@ -226,9 +239,8 @@ class DecoderRNN(BaseRNN):
                 if inputs_lengths[batch] <= 0:
                     p.append(0)
                 else:
-                    if inputs[batch][i] in match_tok:
+                    if inputs[batch][i] not in self.insert_tok:
                         inputs_lengths[batch] -= 1
-
                     p.append(inputs_lengths[batch])
             pe.append(p)
         pos = torch.tensor(pe)
@@ -237,7 +249,7 @@ class DecoderRNN(BaseRNN):
         posemb = self.pos_embedding(pos)
         return posemb, inputs_lengths
 
-    def forward(self, tgt_vocab, inputs=None, input_lengths=None, encoder_hidden=None,
+    def forward(self, inputs=None, input_lengths=None, encoder_hidden=None,
             encoder_outputs=None, encoder_context=None, encoder_action=None,
             function=F.log_softmax, teacher_forcing_ratio=0):
         ret_dict = dict()
@@ -284,20 +296,16 @@ class DecoderRNN(BaseRNN):
                 lengths[update_idx] = len(sequence_symbols)
             return symbols
 
-        match_tok = list()
-        match_tok.append(tgt_vocab.stoi['0'])
-        match_tok.append(tgt_vocab.stoi['-1'])
-        if len(tgt_vocab) > 50:
-            for i in range(110, 219):
-                match_tok.append(tgt_vocab.stoi[str(i)])
+        if self.hard_attn:
+            self.hard_attention.init_inserted(batch_size)
 
         if use_teacher_forcing:
             pos = None
             if self.position_embedding == "sin":
-                pos, _ = self.sin_encoding(match_tok, inputs.cpu().tolist(),
+                pos, _ = self.sin_encoding(inputs.cpu().tolist(),
                     batch_size, max_length, input_lengths, self.embedding_size)
             elif self.position_embedding == "length":
-                pos, _ = self.length_encoding(match_tok, inputs.cpu().tolist(),
+                pos, _ = self.length_encoding(inputs.cpu().tolist(),
                     batch_size, max_length, input_lengths)
             decoder_input = inputs[:, :-1]
             decoder_output, decoder_hidden, attn, decoder_action, stack = self.forward_step(
@@ -317,11 +325,11 @@ class DecoderRNN(BaseRNN):
             for di in range(max_length):
                 decoder_pos = None
                 if self.position_embedding == "sin":
-                    pos, input_len = self.sin_encoding(match_tok, decoder_input.cpu().tolist(),
+                    pos, input_len = self.sin_encoding(decoder_input.cpu().tolist(),
                         batch_size, 1, input_len, self.embedding_size)
                     decoder_pos = pos[:, 0].unsqueeze(1)
                 elif self.position_embedding == "length":
-                    pos, input_len = self.length_encoding(match_tok, decoder_input.cpu().tolist(),
+                    pos, input_len = self.length_encoding(decoder_input.cpu().tolist(),
                         batch_size, 1, input_len)
                     decoder_pos = pos[:, 0].unsqueeze(1)
 
