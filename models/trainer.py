@@ -46,10 +46,10 @@ class Trainer(object):
         self.logger = logging.getLogger(__name__)
 
     def _train_batch(self, input_variable, input_lengths, target_variable,
-            tgt_vocab, model, teacher_forcing_ratio):
+                     model, teacher_forcing_ratio):
         loss = self.loss
         # Forward propagation
-        decoder_outputs, decoder_hidden, other = model(input_variable, tgt_vocab,
+        decoder_outputs, decoder_hidden, other = model(input_variable,
                 input_lengths, target_variable, teacher_forcing_ratio=teacher_forcing_ratio)
         # Get loss
         loss.reset()
@@ -80,8 +80,6 @@ class Trainer(object):
 
         steps_per_epoch = len(batch_iterator)
         total_steps = steps_per_epoch * n_epochs
-
-        tgt_vocab = data.fields['tgt'].vocab
 
         step = start_step
         step_elapsed = 0
@@ -114,7 +112,7 @@ class Trainer(object):
                 #    continue
 
                 loss = self._train_batch(input_variables, input_lengths.tolist(),
-                        target_variables, tgt_vocab, model, teacher_forcing_ratio)
+                        target_variables,model, teacher_forcing_ratio)
 
                 # Record average loss
                 print_loss_total += loss
