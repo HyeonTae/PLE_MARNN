@@ -41,7 +41,6 @@ class Evaluator(object):
         eos = tgt_vocab.stoi['<eos>']
         zero = tgt_vocab.stoi['0']
         unk = tgt_vocab.stoi[data.fields['tgt'].unk_token]
-        #print(tgt_vocab.stoi)
 
         with torch.no_grad():
             for batch in batch_iterator:
@@ -53,7 +52,7 @@ class Evaluator(object):
                 #    continue
 
                 decoder_outputs, decoder_hidden, other = model(
-                        input_variables, tgt_vocab, input_lengths.tolist(), target_variables)
+                        input_variables, input_lengths.tolist(), target_variables)
                 correct_list = []
                 # Evaluation
                 seqlist = other['sequence']

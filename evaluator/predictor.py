@@ -46,7 +46,7 @@ class Predictor(object):
             src_id_seq = src_id_seq.cuda()
 
         with torch.no_grad():
-            _, _, other = self.model(src_id_seq, self.tgt_vocab, lengths)
+            _, _, other = self.model(src_id_seq, lengths)
 
         return other
 
