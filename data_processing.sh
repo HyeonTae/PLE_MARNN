@@ -1,4 +1,5 @@
 mkdir data/network_inputs
+mkdir log
 mkdir log/check_point
 mkdir log/plot
 mkdir log/pth
@@ -23,5 +24,7 @@ python data_processing/preprocess.py
 
 echo 'Data generation...'
 bash data_processing/data_generator.sh
+python data/data_generator/data_generator_editDist_fixed.py
+bash data/data_generator/ids_typo.sh
 
 echo 'Done...'
