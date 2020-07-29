@@ -43,30 +43,25 @@ def remove_line_numbers(source):
     source = source.replace("  ", " ")
     return source
 
-def get_target(inp, source, fix, op):
-    if fix == '-1':
-        target = target = ["0" for i in range(len(inp))]
-    else:
-        fixed = apply_fix(source, fix, op)
-        fixed = remove_line_numbers(fixed).split()
-        log = getTrace(inp, fixed, getEditDistance(inp, fixed))
-        target = ["0" for i in range(len(inp))]
-        for l in log:
-            if l[0] == "i":
-                target.insert(l[1], target_vocab["insert"][l[2]])
-            elif l[0] == "r":
-                target[l[1]] = target[l[1]].replace(target[l[1]], target_vocab["replace"][l[2]])
-            elif l[0] == "d":
-                target[l[1]] = target[l[1]].replace(target[l[1]], "-1")
+def get_target(corrupt_program, program):
+    log = getTrace(corrupt_program, program, getEditDistance(corrupt_program, program))
+    target = ["0" for i in range(len(corrupt_program))]
+    for l in log:
+        if l[0] == "i":
+            target.insert(l[1], target_vocab["insert"][l[2]])
+        elif l[0] == "r":
+            target[l[1]] = target[l[1]].replace(target[l[1]], target_vocab["replace"][l[2]])
+        elif l[0] == "d":
+            target[l[1]] = target[l[1]].replace(target[l[1]], "-1")
 
     return " ".join(target)
 
-def rename_ids_(rng, corrupt_program, fix):
+def rename_ids_(rng, program, corrupt_program):
+    program_new = ''
     corrupt_program_new = ''
-    fix_new = ''
 
     names = []
-    for token in corrupt_program.split():
+    for token in program.split():
         if '_<id>_' in token:
             if token not in names:
                 names.append(token)
@@ -74,32 +69,27 @@ def rename_ids_(rng, corrupt_program, fix):
     rng.shuffle(names)
     name_dictionary = {}
 
-    for token in corrupt_program.split():
+    for token in program.split():
         if '_<id>_' in token:
             if token not in name_dictionary:
                 name_dictionary[token] = '_<id>_' + \
                     str(names.index(token) + 1) + '@'
 
-    for token in fix.split():
-        if '_<id>_' in token:
-            if token not in name_dictionary:
-                raise FixIDNotFoundInSource
-
     # Rename
-    for token in corrupt_program.split():
+    for token in program.split():
         if '_<id>_' in token:
-            corrupt_program_new += name_dictionary[token] + " "
+            program_new += name_dictionary[token] + " "
         else:
-            corrupt_program_new += token + " "
+            program_new += token + " "
 
-    for token in fix.split():
-        if '_<id>_' in token:
-            fix_new += name_dictionary[token] + " "
-        else:
-            fix_new += token + " "
+    if len(corrupt_program) != 0:
+        for token in corrupt_program.split():
+            if '_<id>_' in token:
+                corrupt_program_new += name_dictionary[token] + " "
+            else:
+                corrupt_program_new += token + " "
 
-    return corrupt_program_new, fix_new
-
+    return program_new, corrupt_program_new
 
 def generate_training_data(db_path, bins, validation_users, min_program_length, max_program_length,
                            max_fix_length, kind_mutations, max_mutations, max_variants, seed):
@@ -149,17 +139,16 @@ def generate_training_data(db_path, bins, validation_users, min_program_length, 
 
                     # Correct pairs
                     dummy_fix_for_correct_program = '-1'
-                    source = remove_line_numbers(id_renamed_correct_program)
-                    target = get_target(source.split(), id_renamed_correct_program,
-                            dummy_fix_for_correct_program, op)
+                    source = ' '.join(remove_line_numbers(id_renamed_correct_program).split(' ')[:-1])
+                    target = ["0" for i in range(len(source.split()))]
                     try:
                         result[key][problem_id] += [
                             (source, name_dict, name_sequence,
-                                user_id, code_id, target)]
+                                user_id, code_id, " ".join(target))]
                     except:
                         result[key][problem_id] = [
                             (source, name_dict, name_sequence,
-                                user_id, code_id, target)]
+                                user_id, code_id, " ".join(target))]
 
                     # Mutate
                     total_mutate_calls += 1
@@ -184,7 +173,7 @@ def generate_training_data(db_path, bins, validation_users, min_program_length, 
                         if kind_mutations == 'typo':
                             raise
                     else:
-                        for corrupt_program, fix in iterator:
+                        for i, (corrupt_program, fix) in zip(range(1,len(iterator)+1), iterator):
                             corrupt_program_length = len(
                                 corrupt_program.split())
                             fix_length = len(fix.split())
@@ -194,20 +183,31 @@ def generate_training_data(db_path, bins, validation_users, min_program_length, 
                                corrupt_program_length <= max_program_length and fix_length <= max_fix_length:
 
                                 try:
-                                    corrupt_program, fix = rename_ids(
-                                        corrupt_program, fix)
+                                    if kind_mutations == 'typo':
+                                        corrupt_program, _ = rename_ids(
+                                            corrupt_program, fix)
+                                    else:
+                                        full_program, corrupt_program = rename_ids(
+                                            tokenized_code, corrupt_program)
                                 except FixIDNotFoundInSource:
                                     exceptions_in_mutate_call += 1
 
-                                source = remove_line_numbers(corrupt_program)
-                                target = get_target(source.split(), corrupt_program, fix, op)
+                                
+                                corrupt_source = ' '.join(remove_line_numbers(corrupt_program).split(' ')[:-1])
+                                if kind_mutations == 'typo':
+                                    target = get_target(corrupt_source.split(), source.split())
+                                else:
+                                    full_source = ' '.join(remove_line_numbers(full_program).split(' ')[:-1])
+                                    target = get_target(corrupt_source.split(), full_source.split())
 
                                 try:
                                     result[key][problem_id] += [
-                                        (source, name_dict, name_sequence, user_id, code_id, target)]
+                                        (corrupt_source, name_dict, name_sequence,
+                                            user_id, code_id + "_" + str(i), target)]
                                 except:
                                     result[key][problem_id] = [
-                                        (source, name_dict, name_sequence, user_id, code_id, target)]
+                                        (corrupt_source, name_dict, name_sequence,
+                                            user_id, code_id + "_" + str(i), target)]
 
     program_lengths = np.sort(program_lengths)
     fix_lengths = np.sort(fix_lengths)
